@@ -1,9 +1,14 @@
 package play.db.jpa;
 
 import org.apache.log4j.Level;
+import org.hibernate.boot.model.TypeContributions;
+import org.hibernate.boot.model.TypeContributor;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.jpa.boot.internal.EntityManagerFactoryBuilderImpl;
 import org.hibernate.jpa.boot.internal.PersistenceUnitInfoDescriptor;
+import org.hibernate.jpa.boot.spi.TypeContributorList;
+import org.hibernate.service.ServiceRegistry;
+import org.hibernate.type.BasicType;
 import play.Logger;
 import play.Play;
 import play.PlayPlugin;
@@ -16,13 +21,14 @@ import play.db.DB;
 import play.db.Model;
 import play.exceptions.JPAException;
 import play.exceptions.UnexpectedException;
+import play.inject.Injector;
 
 import javax.persistence.*;
 import javax.persistence.spi.PersistenceUnitInfo;
-
 import java.lang.annotation.Annotation;
 import java.util.*;
 
+import static java.lang.reflect.Modifier.isAbstract;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
@@ -203,6 +209,7 @@ public class JPAPlugin extends PlayPlugin {
         properties.put("javax.persistence.transaction", "RESOURCE_LOCAL");
         properties.put("javax.persistence.provider", "org.hibernate.ejb.HibernatePersistence");
         properties.put("hibernate.dialect", getDefaultDialect(dbConfig, dbConfig.getProperty("db.driver")));
+        properties.put("hibernate.type_contributors", new DynamicTypeContributorList());
 
         if (!dbConfig.getProperty("jpa.ddl", Play.mode.isDev() ? "update" : "none").equals("none")) {
             properties.setProperty("hibernate.hbm2ddl.auto", dbConfig.getProperty("jpa.ddl", "update"));
@@ -210,6 +217,23 @@ public class JPAPlugin extends PlayPlugin {
 
         properties.put("hibernate.connection.datasource", DB.getDataSource(dbName));
         return properties;
+    }
+
+    private static class DynamicTypeContributorList implements TypeContributorList {
+        @Override public List<TypeContributor> getTypeContributors() {
+            return singletonList(new DynamicTypeContributor());
+        }
+    }
+
+    private static class DynamicTypeContributor implements TypeContributor {
+        @Override public void contribute(TypeContributions typeContributions, ServiceRegistry serviceRegistry) {
+            List<Class> customTypes = Play.classloader.getAssignableClasses(BasicType.class);
+            for (Class<BasicType> customType : customTypes) {
+                if (!isAbstract(customType.getModifiers())) {
+                    typeContributions.contributeType(Injector.getBeanOfType(customType));
+                }
+            }
+        }
     }
 
     public static String getDefaultDialect(String driver) {
