@@ -8,6 +8,7 @@ import play.exceptions.UnexpectedException;
 import play.inject.Injector;
 import play.libs.CronExpression;
 import play.libs.Expression;
+import play.libs.F;
 import play.libs.Time;
 import play.mvc.Http.Request;
 import play.utils.Java;
@@ -267,6 +268,11 @@ public class JobsPlugin extends PlayPlugin {
         for (Callable<?> callable : currentActions) {
             executor.submit(callable);
         }
+    }
+
+    public static Future<?> runScheduledJobOnceNow(Job<?> job) {
+        job.runOnce = true;
+        return executor.submit((Callable<?>) job);
     }
 
     // default visibility, because we want to use this only from Job.java
