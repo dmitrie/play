@@ -255,6 +255,12 @@ public class Scope {
             data.clear();
         }
 
+        public void reset() {
+            String timeStamp = data.get(TS_KEY);
+            data.clear();
+            put(TS_KEY, timeStamp);
+        }
+
         /**
          * Returns true if the session is empty, e.g. does not contain anything else than the timestamp
          * 

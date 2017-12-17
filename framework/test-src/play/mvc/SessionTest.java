@@ -1,14 +1,18 @@
 package play.mvc;
 
-import java.lang.reflect.*;
-import org.junit.*;
-
+import org.junit.Test;
 import play.Play;
 import play.PlayBuilder;
-import play.mvc.Http.*;
+import play.mvc.Http.Cookie;
+import play.mvc.Http.Request;
+import play.mvc.Http.Response;
 import play.mvc.Scope.Session;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import static org.junit.Assert.*;
+import static play.mvc.Scope.Session.TS_KEY;
 
 public class SessionTest {
 
@@ -22,19 +26,19 @@ public class SessionTest {
         Response.current.set(new Response());
     }
 
-    public static void setSendOnlyIfChangedConstant(boolean value) {
+    public static void setConstant(String constantName, Object value) {
         try {
             /*
-             * Set the final static value Scope.SESSION_SEND_ONLY_IF_CHANGED using reflection.
+             * Set a value to final static constant using reflection.
              */
-            Field field = Scope.class.getField("SESSION_SEND_ONLY_IF_CHANGED");
+            Field field = Scope.class.getField(constantName);
             field.setAccessible(true);
             Field modifiersField = Field.class.getDeclaredField("modifiers");
             modifiersField.setAccessible(true);
             modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
 
             // Set the new value
-            field.setBoolean(null, value);
+            field.set(null, value);
         } catch(Exception e) {
             throw new RuntimeException(e);
         }
@@ -61,6 +65,24 @@ public class SessionTest {
         session.changed = false;
         session.clear();
         assertTrue(session.changed);
+
+        session.changed = false;
+        session.reset();
+        assertTrue(session.changed);
+    }
+
+    @Test
+    public void testReset() throws Exception {
+        setConstant("COOKIE_EXPIRE", "1h");
+        mockRequestAndResponse();
+        Session session = Session.restore();
+        String timeStamp = session.get(TS_KEY);
+        session.put("foo", "bar");
+
+        session.reset();
+
+        assertEquals(1, session.data.size());
+        assertEquals(timeStamp, session.data.get(TS_KEY));
     }
 
     @Test
@@ -69,7 +91,7 @@ public class SessionTest {
         Play.secretKey = "0112358";
 
         Session session;
-        setSendOnlyIfChangedConstant(true);
+        setConstant("SESSION_SEND_ONLY_IF_CHANGED", true);
         mockRequestAndResponse();
 
         // Change nothing in the session
@@ -92,7 +114,7 @@ public class SessionTest {
     @Test
     public void testSendAlways() {
         Session session;
-        setSendOnlyIfChangedConstant(false);
+        setConstant("SESSION_SEND_ONLY_IF_CHANGED", false);
 
         mockRequestAndResponse();
 
@@ -102,9 +124,12 @@ public class SessionTest {
         assertNotNull(Response.current().cookies.get(Scope.COOKIE_PREFIX + "_SESSION"));
     }
 
-    @After
+    @org.junit.After
     public void restoreDefault() {
         boolean SESSION_SEND_ONLY_IF_CHANGED = Play.configuration.getProperty("application.session.sendOnlyIfChanged", "false").toLowerCase().equals("true"); 
-        setSendOnlyIfChangedConstant(SESSION_SEND_ONLY_IF_CHANGED);
+        setConstant("SESSION_SEND_ONLY_IF_CHANGED", SESSION_SEND_ONLY_IF_CHANGED);
+
+        String COOKIE_EXPIRE = Play.configuration.getProperty("application.session.maxAge");
+        setConstant("COOKIE_EXPIRE", COOKIE_EXPIRE);
     }
 }
